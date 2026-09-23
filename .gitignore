@@ -1,0 +1,32 @@
+# 构建产物
+build/
+*.o
+*.dSYM/
+
+# 编译出来的二进制（源码在仓库里）
+/apptap
+/perappvol
+/winlist
+/allw
+/allw2
+/crop
+/crop2
+/crop3
+/fontprobe
+/fontweight
+/cjkprobe
+/cjkweight
+/cascadetest
+/cascade72
+/bigweight
+/perrun
+/retina
+/inkprobe
+/verify
+
+# macOS
+.DS_Store
+
+# 运行时状态（用户设置在 UserDefaults 里，不入库）
+*.sock
+*.pid
