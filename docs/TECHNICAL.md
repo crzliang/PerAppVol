@@ -264,3 +264,6 @@ enum Typo {
   xcrun notarytool submit build/PerAppVol-arm64.dmg --keychain-profile <profile> --wait
   xcrun stapler staple build/PerAppVol-arm64.dmg
   ```
+
+
+<!-- 触发测试：纯文档改动 -->
