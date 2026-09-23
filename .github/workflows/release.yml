@@ -37,7 +37,7 @@ jobs:
             echo "✅ 具备签名 + 公证条件，产出可公开分发的 DMG"
           else
             echo "mode=local" >> "$GITHUB_OUTPUT"
-            echo "::warning::未配置 Developer ID / 公证 Secrets —— 产出的 DMG 【未公证】，用户需右键→打开。见 docs/RELEASE.md"
+            echo "::warning::未配置 Developer ID / 公证 Secrets —— 产出的 DMG 【未公证】，用户需右键→打开。见文档仓库 TECHNICAL.md 第九节"
           fi
 
       # ───────────────────────────── 导入 Developer ID 证书到临时钥匙串

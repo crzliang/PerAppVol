@@ -115,6 +115,6 @@ for (name, px) in specs {
 // 预览图（不进 bundle）
 writePNG(drawIcon(1024), "build/AppIcon-preview.png")
 
-// README 页头用的小图标（进仓库）
-writePNG(drawIcon(256), "docs/hero-icon.png")
-print("  docs/hero-icon.png  (256)")
+// 页头用的小图标 —— 手动拷到 mac-sound-control-docs 仓库
+writePNG(drawIcon(256), "build/hero-icon.png")
+print("  build/hero-icon.png  (256)  <- 手动拷到 mac-sound-control-docs")
