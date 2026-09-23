@@ -463,9 +463,31 @@ static OSStatus createTapAt(UInt32 i) {
         //   bundleIDs              用 bundle ID 而非 object ID 圈定进程
         //   processRestoreEnabled  进程退出/重启后系统自动把它恢复到 tap 里
         // 这样 tap 一次建立，长期有效。
-        d = [[CATapDescription alloc] initStereoMixdownOfProcesses:@[]];
-        d.bundleIDs = @[ key ];                 // key 就是它上报的 bundleID
-        d.processRestoreEnabled = YES;
+        // bundleIDs / processRestoreEnabled 是 macOS 26 SDK 才有的 API。
+        // 两层保护：
+        //   编译期 __MAC_OS_X_VERSION_MAX_ALLOWED —— 用老 SDK（如 CI 的 macos-15）也能编过
+        //   运行期 @available                       —— 在 macOS < 26 上不调用
+        BOOL usedBundleID = NO;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 260000
+        if (@available(macOS 26.0, *)) {
+            d = [[CATapDescription alloc] initStereoMixdownOfProcesses:@[]];
+            d.bundleIDs = @[ key ];             // key 就是它上报的 bundleID
+            d.processRestoreEnabled = YES;
+            usedBundleID = YES;
+        }
+#endif
+        if (!usedBundleID) {
+            // 老 SDK / 老系统：退回按进程对象建 tap。
+            // 只在该服务当前连着 coreaudiod 时有效（它安静时会断开），但至少能用。
+            NSArray<NSNumber *> *procs = procsForLabel(key);
+            if (procs.count == 0) {
+                fprintf(stderr,
+                    "%s 当前不在音频进程列表里，且本机 SDK 不支持 bundleIDs 常驻 tap"
+                    "（需要 macOS 26+）。等它出声时可以再试。\n", key.UTF8String);
+                return -1;
+            }
+            d = [[CATapDescription alloc] initStereoMixdownOfProcesses:procs];
+        }
     } else if ([key isEqualToString:@"ALL"]) {
         // 兜底 tap：只覆盖"没被单独控制的"App。排除列表见 catchAllExcludeList()。
         d = [[CATapDescription alloc] initStereoGlobalTapButExcludeProcesses:catchAllExcludeList()];

@@ -22,7 +22,13 @@ iconutil -c icns build/AppIcon.iconset -o build/AppIcon.icns
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 echo "  ✅ AppIcon.icns"
 
-echo "▸ 编译混音引擎 (src/engine/perappvol.m)…"
+SDK_VER=$(xcrun --show-sdk-version 2>/dev/null || echo 0)
+SDK_MAJOR=${SDK_VER%%.*}
+if [ "${SDK_MAJOR:-0}" -ge 26 ]; then
+    echo "▸ 编译混音引擎…  SDK $SDK_VER（含 bundleIDs 常驻 tap：系统提示音可控）"
+else
+    echo "▸ 编译混音引擎…  SDK $SDK_VER  ⚠ < 26，产物【不含】系统提示音常驻 tap 支持"
+fi
 # 架构显式钉死：目前只出 arm64（Apple Silicon）。
 # 要出通用二进制改成 -arch arm64 -arch x86_64，但 x86 需要真机/CI 验证。
 # 14.2 是 AudioHardwareCreateProcessTap 的最低版本。

@@ -18,7 +18,7 @@ env:
 jobs:
   build-and-release:
     name: 构建 + 签名 + 公证 + 发布
-    runs-on: macos-15        # Apple Silicon runner —— 与产出架构一致
+    runs-on: macos-26        # 需要 macOS 26 SDK：bundleIDs / processRestoreEnabled
     env:
       ARCH: arm64            # 目前只发 arm64（无 x86 测试环境，不做通用二进制）
       MACOSX_DEPLOYMENT_TARGET: "14.2"
