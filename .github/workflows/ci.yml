@@ -1,0 +1,46 @@
+name: CI
+
+# 每次 push / PR 验证能构建（不签名、不公证、不发布）
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    name: 构建验证
+    runs-on: macos-15        # Apple Silicon runner
+    env:
+      ARCH: arm64
+      MACOSX_DEPLOYMENT_TARGET: "14.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 构建 App + 工具
+        run: make
+
+      - name: 打包 DMG（未签名，仅验证打包流程）
+        run: ./make-dmg.sh
+
+      - name: 校验产物
+        run: |
+          set -e
+          ls -lh build/
+          test -d build/PerAppVol.app
+          test -f build/PerAppVol-arm64.dmg
+          # App bundle 必须包含引擎二进制（自包含）
+          test -x build/PerAppVol.app/Contents/Resources/perappvol
+          test -x build/PerAppVol.app/Contents/MacOS/PerAppVol
+          # DMG 里必须有 Applications 快捷方式
+          MNT=$(hdiutil attach -nobrowse -readonly build/PerAppVol-arm64.dmg | tail -1 | awk -F'\t' '{print $NF}')
+          test -e "$MNT/PerAppVol.app"
+          test -L "$MNT/Applications"
+          hdiutil detach "$MNT" -quiet
+          echo "✅ 构建 + 打包 + DMG 结构均正常"
+
+      - name: 上传 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerAppVol-ci
+          path: build/PerAppVol-arm64.dmg

@@ -1,0 +1,138 @@
+name: Release
+
+# 推送 v* 标签即发布（例如 v0.1.0）：
+#   git tag v0.1.0 && git push origin v0.1.0
+# 也可在 Actions 页面手动触发（workflow_dispatch）。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # 创建 GitHub Release 需要
+
+env:
+  APP_NAME: PerAppVol
+
+jobs:
+  build-and-release:
+    name: 构建 + 签名 + 公证 + 发布
+    runs-on: macos-15        # Apple Silicon runner —— 与产出架构一致
+    env:
+      ARCH: arm64            # 目前只发 arm64（无 x86 测试环境，不做通用二进制）
+      MACOSX_DEPLOYMENT_TARGET: "14.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      # ───────────────────────────── 判断走「正式分发」还是「未公证」
+      - name: 检查签名/公证条件
+        id: dist
+        env:
+          CERT: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          AID:  ${{ secrets.APPLE_ID }}
+        run: |
+          if [ -n "$CERT" ] && [ -n "$AID" ]; then
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            echo "✅ 具备签名 + 公证条件，产出可公开分发的 DMG"
+          else
+            echo "mode=local" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置 Developer ID / 公证 Secrets —— 产出的 DMG 【未公证】，用户需右键→打开。见 docs/RELEASE.md"
+          fi
+
+      # ───────────────────────────── 导入 Developer ID 证书到临时钥匙串
+      - name: 导入签名证书
+        if: steps.dist.outputs.mode == 'release'
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KP=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KP" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KP" "$KEYCHAIN"
+
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+              -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # 允许 codesign 在无 UI 的情况下使用私钥
+          security set-key-partition-list \
+              -S apple-tool:,apple:,codesign: -s -k "$KP" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+
+          echo "已导入证书:"
+          security find-identity -v -p codesigning | grep "Developer ID Application" || true
+
+      # ───────────────────────────── 配置公证凭据（notarytool）
+      - name: 配置公证凭据
+        if: steps.dist.outputs.mode == 'release'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "notary-profile" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD"
+
+      # ───────────────────────────── 构建 + 签名 + 公证 + 打 DMG
+      - name: 打包 DMG
+        run: |
+          if [ "${{ steps.dist.outputs.mode }}" = "release" ]; then
+            NOTARY_PROFILE=notary-profile ./make-dmg.sh --release
+          else
+            ./make-dmg.sh
+          fi
+
+      # ───────────────────────────── 带上版本号命名
+      - name: 标记版本号
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev-$(date +%Y%m%d)}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || VERSION="dev-$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          mv "build/$APP_NAME-$ARCH.dmg" "build/$APP_NAME-$VERSION-$ARCH.dmg"
+          shasum -a 256 "build/$APP_NAME-$VERSION-$ARCH.dmg" \
+              > "build/$APP_NAME-$VERSION-$ARCH.dmg.sha256"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          ls -lh build/*.dmg*
+
+      # ───────────────────────────── 发布到 GitHub Release
+      - name: 创建 Release 并上传
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/*.dmg
+            build/*.sha256
+          generate_release_notes: true
+          body: |
+            ## ${{ env.APP_NAME }} ${{ env.VERSION }}
+
+            **架构：Apple Silicon (arm64)** —— Intel Mac 无法运行（暂无 x86 测试环境，未产出通用二进制）。
+            最低系统：**macOS 14.2**（Process Tap API 的门槛）。
+
+            安装：双击 DMG → 把 **PerAppVol** 拖到 **Applications**。
+
+            首次运行需授权：**系统设置 → 隐私与安全性 → 屏幕与系统音频录制 → PerAppVol**
+            （不授权的话 App 抓不到各 App 的音频。）
+
+            ### 校验
+            ```
+            shasum -a 256 -c PerAppVol-*-$ARCH.dmg.sha256
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 手动触发时没有 tag，上传到 workflow 产物里
+      - name: 上传构建产物（非 tag 触发）
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerAppVol-${{ env.VERSION }}
+          path: |
+            build/*.dmg
+            build/*.sha256

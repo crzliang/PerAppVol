@@ -374,6 +374,63 @@ build/perappvol serve com.netease.163music=0.2 ALL=1.0 --socket /tmp/ppv.sock
 printf "set ALL 0.5\nstat\n" | nc -U /tmp/ppv.sock
 ```
 
+### 架构与系统要求
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| **CPU** | **Apple Silicon (arm64)** | 只出 arm64 —— 无 x86 测试环境，不做通用二进制 |
+| **最低系统** | **macOS 14.2** | `AudioHardwareCreateProcessTap` 的门槛 |
+| 沙盒 | ❌ 不支持 | tap 与沙盒不兼容，不能上 Mac App Store |
+
+架构在构建脚本里**显式钉死**（`clang -arch arm64` / `swiftc -target arm64-apple-macos14.2`），
+不会因为 runner 变化而意外产出别的架构。要出 x86/通用二进制需先有测试环境。
+
+## 八、CI 与发布
+
+### GitHub Actions
+
+```
+.github/workflows/ci.yml        每次 push / PR：构建验证 + 打包 + DMG 结构校验
+.github/workflows/release.yml   推 v* 标签：构建 + 签名 + 公证 + 发布到 GitHub Release
+```
+
+**发版**：
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+产出 `PerAppVol-v0.1.0-arm64.dmg` + `.sha256`，自动创建 Release 并附安装说明。
+
+Actions 页面也可手动触发（`workflow_dispatch`），那时不发 Release，产物放 workflow artifacts。
+
+### Secrets 配置（决定能不能公开分发）
+
+在仓库 **Settings → Secrets and variables → Actions** 里加：
+
+| Secret | 内容 | 取得方式 |
+|---|---|---|
+| `DEVELOPER_ID_CERT_P12_BASE64` | 证书 + 私钥（.p12 的 base64） | 钥匙串访问导出 .p12 后 `base64 -i cert.p12` |
+| `DEVELOPER_ID_CERT_PASSWORD` | 导出 .p12 时设的密码 | 自己设的 |
+| `APPLE_ID` | Apple ID 邮箱 | — |
+| `APPLE_TEAM_ID` | 开发者团队 ID | developer.apple.com → Membership |
+| `APPLE_APP_PASSWORD` | **App 专用密码** | appleid.apple.com → 登录与安全 → App 专用密码 |
+
+**没配 Secrets 也能跑**：workflow 会退化成产出【未公证】DMG 并在 job 里打 warning ——
+方便先跑通流程、拿到可自测的安装包。但那种 DMG **不能公开分发**。
+
+**有 Developer ID 证书**：需要 Apple Developer Program 会员（99 USD/年），
+Xcode → Settings → Accounts → Manage Certificates → **Developer ID Application**。
+
+### 本地发版（不走 CI）
+
+```bash
+./make-dmg.sh --check      # 检查分发前置条件
+./make-dmg.sh --release    # Developer ID 签名 + 公证 + 装订
+./make-dmg.sh              # 本机版（未公证）
+```
+
+---
+
 ### 调试工具
 
 ```bash

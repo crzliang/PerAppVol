@@ -11,16 +11,24 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP=build/PerAppVol.app
+ARCH="${ARCH:-arm64}"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 echo "▸ 编译混音引擎 (src/engine/perappvol.m)…"
-clang -fobjc-arc -O2 src/engine/perappvol.m \
+# 架构显式钉死：目前只出 arm64（Apple Silicon）。
+# 要出通用二进制改成 -arch arm64 -arch x86_64，但 x86 需要真机/CI 验证。
+# 14.2 是 AudioHardwareCreateProcessTap 的最低版本。
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.2}"
+# clang 认 -arch；swiftc 认 -target（不能混用）
+CLANG_FLAGS="-arch $ARCH"
+SWIFT_FLAGS="-target $ARCH-apple-macos${MACOSX_DEPLOYMENT_TARGET}"
+clang -fobjc-arc -O2 $CLANG_FLAGS src/engine/perappvol.m \
     -o "$APP/Contents/Resources/perappvol" \
     -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
 echo "▸ 编译菜单栏 UI (src/ui/PerAppVolApp.swift)…"
-swiftc -O -parse-as-library src/ui/PerAppVolApp.swift \
+swiftc -O -parse-as-library $SWIFT_FLAGS src/ui/PerAppVolApp.swift \
     -o "$APP/Contents/MacOS/PerAppVol" \
     -framework SwiftUI -framework AppKit -framework CoreAudio
 
@@ -70,7 +78,7 @@ else
 fi
 
 echo
-echo "✅ 完成: $APP"
+echo "✅ 完成: $APP  (arch=$ARCH, macOS >= ${MACOSX_DEPLOYMENT_TARGET:-14.2})"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature" || true
 echo
 echo "运行:  open $APP"

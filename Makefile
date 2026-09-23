@@ -12,7 +12,13 @@ BUILD  := build
 CC     := clang
 SWIFTC := swiftc
 
-OBJC_FLAGS  := -fobjc-arc -O2 -Wall
+# 目前只出 arm64（Apple Silicon）。x86_64 未经测试，暂不产出。
+ARCH   ?= arm64
+export MACOSX_DEPLOYMENT_TARGET ?= 14.2
+CLANG_FLAGS := -arch $(ARCH)
+SWIFT_FLAGS := -target $(ARCH)-apple-macos$(MACOSX_DEPLOYMENT_TARGET)
+
+OBJC_FLAGS  := -fobjc-arc -O2 -Wall $(CLANG_FLAGS)
 FRAMEWORKS  := -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
 .PHONY: all app tools dmg install run clean
@@ -37,7 +43,7 @@ $(BUILD)/apptap: src/tools/apptap.m | $(BUILD)
 
 # 系统总音量 / 静音 / 切换默认输出设备（零权限）
 $(BUILD)/volctl: src/tools/volctl.swift | $(BUILD)
-	$(SWIFTC) -O $< -o $@
+	$(SWIFTC) -O $(SWIFT_FLAGS) $< -o $@
 
 # 打包 DMG（App + Applications 快捷方式，可分发）
 dmg:
@@ -49,7 +55,7 @@ install: app
 	pkill -f "PerAppVol.app/Contents/Resources/perappvol" 2>/dev/null || true
 	rm -rf "/Applications/PerAppVol.app"
 	cp -R "$(BUILD)/PerAppVol.app" /Applications/
-	@echo "✅ 已安装到 /Applications/PerAppVol.app"
+	@echo "✅ 已安装到 /Applications/PerAppVol.app (arch=$(ARCH))"
 	@echo "   首次运行需在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 里打开 PerAppVol"
 	open "/Applications/PerAppVol.app"
 
