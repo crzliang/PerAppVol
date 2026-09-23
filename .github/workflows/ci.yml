@@ -1,11 +1,27 @@
 name: CI
 
 # 每次 push / PR 验证能构建（不签名、不公证、不发布）
+#
+# 纯文档改动【不触发构建】——改 README / 技术笔记 / 图片不该占 CI 配额，
+# 也不该因为文档 typo 就冒出一个失败的红叉。
+# 注意：workflow 文件本身的改动仍然会触发（有意为之，改 CI 必须验证）。
+
+# 不用 YAML 锚点：GitHub Actions 对 anchors/aliases 的支持不保证，写显式两份更稳。
 
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore
 
 jobs:
   build:
