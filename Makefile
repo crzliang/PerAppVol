@@ -21,7 +21,7 @@ SWIFT_FLAGS := -target $(ARCH)-apple-macos$(MACOSX_DEPLOYMENT_TARGET)
 OBJC_FLAGS  := -fobjc-arc -O2 -Wall $(CLANG_FLAGS)
 FRAMEWORKS  := -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
-.PHONY: all app tools icon dmg install run clean
+.PHONY: all app tools icon dmg install run autostart autostart-off clean
 
 all: app tools
 
@@ -65,6 +65,14 @@ install: app
 	@echo "✅ 已安装到 /Applications/PerAppVol.app (arch=$(ARCH))"
 	@echo "   首次运行需在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 里打开 PerAppVol"
 	open "/Applications/PerAppVol.app"
+
+# 开机自启（用户级 LaunchAgent，无需管理员权限）
+# 说明：PerAppVol 不启动 = 没有 tap = 完全没有音量控制，所以这个很重要
+autostart: install
+	./scripts/autostart.sh on
+
+autostart-off:
+	./scripts/autostart.sh off
 
 run: app
 	open $(BUILD)/PerAppVol.app

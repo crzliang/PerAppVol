@@ -35,7 +35,7 @@ clang -fobjc-arc -O2 $CLANG_FLAGS src/engine/perappvol.m \
     -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
 echo "▸ 编译菜单栏 UI (src/ui/PerAppVolApp.swift)…"
-swiftc -O -parse-as-library $SWIFT_FLAGS src/ui/PerAppVolApp.swift \
+swiftc -O -parse-as-library $SWIFT_FLAGS src/ui/PerAppVolApp.swift src/ui/Autostart.swift \
     -o "$APP/Contents/MacOS/PerAppVol" \
     -framework SwiftUI -framework AppKit -framework CoreAudio
 

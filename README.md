@@ -190,12 +190,18 @@ quit
 - [x] 「系统提示音」独立控制（`bundleIDs` + `processRestoreEnabled`）
 - [x] App 图标、DMG 打包、免开发者账号安装脚本、GitHub Actions
 
+> **P0 已完成**（2026-09）
+> 1. 设置身份键 = `.app` 自己的 `Info.plist` **bundle ID**（不是路径、也不是 helper 的 bundleID），
+>    App 移动/重装设置不丢；老版本按路径存的设置会自动迁移。
+> 2. 开机自启：`LaunchAgent` + `KeepAlive`（**App 不启动 = 没有 tap = 完全没有音量控制**，
+>    所以这不是锦上添花，而是链路的一部分）。UI 有开关，CLI 用 `make autostart` / `autostart-off`。
+
 **未完成 —— 按优先级**
 
 | 优先 | 项 | 为什么 |
 |---|---|---|
-| **P0** | 设置按 **`.app` 路径**存，App 一移动/重装就丢 | 应改为按 bundle ID 归并（`procsForLabel` 已有 bundle ID，改存储键即可） |
-| **P0** | **开机自启**（LaunchAgent） | 菜单栏工具必备，否则每次手动开 |
+| ~~P0~~ | ~~设置按 `.app` 路径存~~ | ✅ 已改用 **bundle ID** 作身份键（路径会变，bundle ID 不变），并带旧设置迁移 |
+| ~~P0~~ | ~~开机自启（LaunchAgent）~~ | ✅ 已实现（UI 开关 + `make autostart`），`KeepAlive` 挂了自动拉起 |
 | **P1** | **全局快捷键**（一键全部静音 / 切勿扰） | 桌面工具的核心效率 |
 | **P1** | **搜索/过滤** | 17 个 App 滚动找起来费劲 |
 | **P1** | **延迟实测** | 目前只有理论预算 ≤40ms，没有实测数据 |

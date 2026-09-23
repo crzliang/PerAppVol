@@ -233,14 +233,15 @@ enum IconCache {
     private static var cache: [String: NSImage] = [:]
     private static let lock = NSLock()
 
-    static func get(key: String, pid: Int32) -> NSImage? {
+    /// path = .app 包路径（取图标的依据）；key = 稳定身份（bundle ID），只做缓存键
+    static func get(key: String, path: String, pid: Int32) -> NSImage? {
         lock.lock(); defer { lock.unlock() }
         if let hit = cache[key] { return hit }
         let img: NSImage?
         if key == "systemsoundserverd" {
             img = NSImage(systemSymbolName: "bell.badge.fill", accessibilityDescription: "系统提示音")
-        } else if key.hasSuffix(".app") {
-            img = NSWorkspace.shared.icon(forFile: key)
+        } else if path.hasSuffix(".app") {
+            img = NSWorkspace.shared.icon(forFile: path)
         } else if pid > 0 {
             img = NSRunningApplication(processIdentifier: pid)?.icon
         } else {
@@ -335,7 +336,10 @@ struct AppRow: Identifiable, Equatable {
     let playing: Bool     // 当前有没有在出声
     let pid: Int32
     let name: String
-    let key: String       // 通常是 .app 包路径，作为控制 label（可含空格）
+    /// 稳定身份 = bundle ID（设置按它持久化 —— App 路径会变，bundle ID 不变）
+    let key: String
+    /// .app 包路径，只用来取图标
+    let path: String
     let icon: NSImage?    // 存储属性：解析时算好，渲染时零成本
     var id: String { key }
     var isSystemService: Bool { key == "systemsoundserverd" }
@@ -350,10 +354,11 @@ func parseAppRows(_ resp: String) -> [AppRow] {
         let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
         guard f.count >= 6 else { return nil }
         let key = f[5]
+        let path = f.count >= 7 ? f[5 + 1] : ""
         let pid = Int32(f[3]) ?? 0
         return AppRow(realApp: f[1] == "1", playing: f[2] == "1",
-                      pid: pid, name: f[4], key: key,
-                      icon: IconCache.get(key: key, pid: pid))
+                      pid: pid, name: f[4], key: key, path: path,
+                      icon: IconCache.get(key: key, path: path, pid: pid))
     }
     ulog("parseAppRows: 解析出 \(rows.count) 行")
     return rows
@@ -365,7 +370,24 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
     private init() {
         if let saved = UserDefaults.standard.dictionary(forKey: "ppv.gains") as? [String: Double] {
-            desired = saved
+            // 迁移：老版本用 .app 路径当 key，App 一移动设置就丢。
+            // 现在 key = bundle ID，这里把路径形式的老 key 映射过去。
+            var migrated: [String: Double] = [:]
+            for (k, v) in saved {
+                var key = k
+                if k.hasSuffix(".app"), let bid = (Bundle(path: k)?.bundleIdentifier) {
+                    key = bid
+                }
+                migrated[key] = v
+            }
+            if migrated != saved {
+                desired = migrated
+                // 注意：init() 里的赋值【不触发 didSet】，必须显式写回，否则迁移只活在内存里
+                UserDefaults.standard.set(migrated, forKey: "ppv.gains")
+                ulog("迁移设置: \(saved.count) 条，路径 key -> bundle ID（已写回）")
+            } else {
+                desired = saved
+            }
         }
         if UserDefaults.standard.bool(forKey: "ppv.bypass") { bypass = true }
     }
@@ -396,6 +418,7 @@ final class AppModel: ObservableObject {
     @Published var bypass = false
     @Published var showAll = false
     @Published var showSystem = false
+    @Published var autostart = false
     private var timer: Timer?
     private var lastLaunch = Date.distantPast
     private var launching = false
@@ -418,6 +441,7 @@ final class AppModel: ObservableObject {
                 _ = CGRequestScreenCaptureAccess()
             }
         }
+        autostart = Autostart.isEnabled
         ensureEngine()
         MeterFeed.shared.start()
         refresh()
@@ -523,6 +547,13 @@ final class AppModel: ObservableObject {
         desired[a.key] = nil
         touch()
         fire("remove \(a.key)", dedupe: "remove/\(a.key)")
+    }
+
+    func toggleAutostart() {
+        autostart.toggle()
+        let ok = Autostart.setEnabled(autostart)
+        ulog("开机自启 -> \(autostart ? "开" : "关")  \(ok ? "成功" : "失败")")
+        if !ok { autostart = Autostart.isEnabled }
     }
 
     func toggleBypass() {
@@ -797,17 +828,27 @@ struct PanelView: View {
             Divider()
 
             HStack {
-                Toggle(isOn: Binding(get: { model.showSystem },
-                                set: { model.showSystem = $0 })) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: Binding(get: { model.showSystem },
+                                         set: { model.showSystem = $0 })) {
                         Typo.caption.text("显示系统进程")
                     }
                     .toggleStyle(.checkbox).controlSize(.mini)
+                    // 开机自启很关键：App 不启动 = 没有 tap = 完全没有音量控制
+                    Toggle(isOn: Binding(get: { model.autostart },
+                                         set: { _ in model.toggleAutostart() })) {
+                        Typo.caption.text("开机自启")
+                    }
+                    .toggleStyle(.checkbox).controlSize(.mini)
+                }
                 Spacer()
-                Button(action: { model.toggleBypass() }) {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Button(action: { model.toggleBypass() }) {
                         Typo.caption.text(model.bypass ? "取消全部静音" : "全部静音")
                     }
                     .controlSize(.small)
-                Button(action: { NSApp.terminate(nil) }) { Typo.caption.text("退出") }.controlSize(.small)
+                    Button(action: { NSApp.terminate(nil) }) { Typo.caption.text("退出") }.controlSize(.small)
+                }
             }
         }
         .padding(12)

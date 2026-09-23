@@ -297,14 +297,23 @@ static NSString *procPathForPid(pid_t pid) {
     return [NSString stringWithUTF8String:buf];
 }
 
-/// 按 App 分组。归组依据优先级：
-///   1) NSRunningApplication.bundleURL —— 即 .app 包路径。
-///      这才是真正的"一个 App"：微信.app 里同时有 com.tencent.xinWeChat 和
-///      com.tencent.flue.WeChatAppEx，Chrome.app 里有 Chrome / Chrome Helper，
-///      用 bundleID 归并一定会拆散或漏掉。
-///   2) bundle ID + helper 归并（`com.x.y.helper` -> `com.x.y`），给没有 .app 的后台进程用
+/// 按 App 分组。
+///
+/// 【归组】按 .app 包路径 —— 这样 Chrome / 微信 / Lark 的 helper 进程能正确归并。
+/// 【身份键】用 bundle ID —— App 路径会变（移动、重装、换盘），bundle ID 不变。
+///     设置持久化用身份键，路径变了设置才不会丢。
+///
+/// 归组依据优先级：
+///   1) 可执行文件路径的最外层 .app（覆盖嵌套 helper .app）
+///   2) bundleID + helper 归并（`com.x.y.helper` -> `com.x.y`），给没有 .app 的后台进程
 ///   3) 都没有 -> 不算 App（纯 CLI），跳过
-/// key 的形态：.app 路径（真 App）/ bundleID / 本地化名（系统进程）
+///
+/// key 的形态：bundleID（真 App / 系统服务）/ .app 路径（无 bundleID 时回退）/ 名字
+static NSDictionary<NSString *, NSArray<NSNumber *> *> *gKeyedProcsCache = nil;
+static NSDictionary<NSString *, NSString *> *gAppPathCache = nil;   // 身份键 -> .app 路径（取图标用）
+
+static NSString *appPathForKey(NSString *key) { return gAppPathCache[key]; }
+
 static NSDictionary<NSString *, NSArray<NSNumber *> *> *keyedProcs(void) {
     NSArray<NSNumber *> *objs = processObjects();
     NSMutableSet<NSString *> *allBundles = [NSMutableSet set];
@@ -313,38 +322,63 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *keyedProcs(void) {
                               kAudioObjectPropertyScopeGlobal, 0);
         if (b.length) [allBundles addObject:b];
     }
-    NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *map = [NSMutableDictionary dictionary];
+
+    // ── 第一遍：按 .app 路径归组（这是"一个 App"的物理边界）
+    NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *byPath = [NSMutableDictionary dictionary];
     for (NSNumber *n in objs) {
         AudioObjectID o = n.unsignedIntValue;
         pid_t pid = (pid_t)u32Prop(o, kAudioProcessPropertyPID);
         NSString *bundleID = strProp(o, kAudioProcessPropertyBundleID,
                                      kAudioObjectPropertyScopeGlobal, 0);
-        NSString *key = nil;
-
         NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-        // 1) 先用可执行文件路径找最外层 .app —— 覆盖嵌套 helper .app
         NSString *outer = outerAppPath(procPathForPid(pid) ?: app.bundleURL.path);
-        if (outer) {
-            key = outer;
-        } else if (app.bundleIdentifier.length) {
-            key = app.bundleIdentifier;
-        } else if (app.localizedName.length) {
-            key = app.localizedName;
-        } else if (bundleID.length) {
-            key = bundleID;
-            for (NSString *b in allBundles) {        // helper -> 父 bundle
+
+        NSString *group = outer;                       // 最外层 .app
+        if (!group) group = app.bundleIdentifier;      // 无 .app 的后台进程
+        if (!group) group = app.localizedName;
+        if (!group && bundleID.length) {
+            group = bundleID;                          // helper -> 父 bundle
+            for (NSString *b in allBundles) {
                 if (![bundleID hasPrefix:b] || bundleID.length <= b.length) continue;
                 if ([bundleID characterAtIndex:b.length] != '.') continue;
-                key = b;
+                group = b;
                 break;
             }
         }
-        if (!key) continue;
-        NSMutableArray *list = map[key] ?: [NSMutableArray array];
+        if (!group) continue;
+        NSMutableArray *list = byPath[group] ?: [NSMutableArray array];
         [list addObject:n];
-        map[key] = list;
+        byPath[group] = list;
     }
-    return map;
+
+    // ── 第二遍：每组换成稳定身份键（bundleID 优先）
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    NSMutableDictionary *paths  = [NSMutableDictionary dictionary];
+    [byPath enumerateKeysAndObjectsUsingBlock:^(NSString *group, NSArray<NSNumber *> *list, BOOL *stop) {
+        (void)stop;
+        NSString *stable = nil;
+        // 优先级 1：.app 包【自己的】Info.plist bundle ID。
+        //    最可靠：不随路径变，也不会拿到 helper 的 bundleID
+        //    （helper 的 NSRunningApplication.bundleIdentifier 是 helper 自己的）。
+        if ([group hasSuffix:@".app"]) {
+            stable = [NSBundle bundleWithPath:group].bundleIdentifier;
+        }
+        // 优先级 2：任一进程上报的 bundleID
+        if (!stable) for (NSNumber *n in list) {
+            AudioObjectID o = n.unsignedIntValue;
+            pid_t pid = (pid_t)u32Prop(o, kAudioProcessPropertyPID);
+            NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+            NSString *bid = app.bundleIdentifier
+                ?: strProp(o, kAudioProcessPropertyBundleID, kAudioObjectPropertyScopeGlobal, 0);
+            if (bid.length) { stable = bid; break; }
+        }
+        if (!stable) stable = group;                   // 回退：.app 路径 / 名字
+        result[stable] = list;
+        if ([group hasSuffix:@".app"]) paths[stable] = group;
+    }];
+    gAppPathCache = paths;
+    gKeyedProcsCache = result;
+    return result;
 }
 
 /// 系统提示音 / 通知提示音 / 警告音 —— 实测（beep、通知+sound name）都由 systemsoundserverd 混音输出。
@@ -359,7 +393,7 @@ static NSDictionary<NSString *, NSString *> *specialServiceNames(void) {
 
 /// key 是不是真实的 .app（用来在 UI 里过滤掉 com.apple.* 这类系统守护进程）
 static BOOL keyIsRealApp(NSString *key) {
-    return [key hasSuffix:@".app"] || specialServiceNames()[key] != nil;
+    return appPathForKey(key) != nil || [key hasSuffix:@".app"] || specialServiceNames()[key] != nil;
 }
 
 /// label -> 它涵盖的全部进程对象（含 helper）
@@ -378,15 +412,20 @@ static NSArray<NSNumber *> *procsForLabel(NSString *label) {
 static NSString *displayNameForKey(NSString *key) {
     NSString *svc = specialServiceNames()[key];
     if (svc) return svc;
-    if ([key hasSuffix:@".app"]) {
-        NSBundle *b = [NSBundle bundleWithPath:key];
+    // bundle ID -> 找 .app 路径 -> 取它的显示名
+    NSString *p = appPathForKey(key);
+    if (!p && [key hasSuffix:@".app"]) p = key;
+    if (p) {
+        NSBundle *b = [NSBundle bundleWithPath:p];
         NSString *n = [b objectForInfoDictionaryKey:@"CFBundleDisplayName"]
                    ?: [b objectForInfoDictionaryKey:@"CFBundleName"]
                    ?: [[b bundlePath] lastPathComponent];
         if (n.length) return n;
-        NSString *base = [key lastPathComponent];
+        NSString *base = [p lastPathComponent];
         return [base substringToIndex:base.length - 4];
     }
+    // 兜底：bundle ID 自身
+    if ([key containsString:@"."]) return [key componentsSeparatedByString:@"."].lastObject;
     for (NSNumber *n in keyedProcs()[key]) {
         pid_t pid = (pid_t)u32Prop(n.unsignedIntValue, kAudioProcessPropertyPID);
         NSString *nm = [NSRunningApplication runningApplicationWithProcessIdentifier:pid].localizedName;
@@ -625,7 +664,7 @@ static int handleControl(int fd) {
             } else if ([cmd isEqualToString:@"list"]) {
                 // 供 UI 用：App 级列表（helper 已归并）。
                 // TAB 分隔 —— 名字和 .app 路径里都可能有空格。
-                // 字段: app \t realApp(0/1) \t playing(0/1) \t pid \t 名字 \t key
+                // 字段: app \t realApp(0/1) \t playing(0/1) \t pid \t 名字 \t key(稳定身份=bundleID) \t path(.app 路径，取图标用)
                 NSDictionary *map = keyedProcs();
                 NSMutableArray<NSString *> *rows = [NSMutableArray array];
                 for (NSString *key in map) {
@@ -637,9 +676,10 @@ static int handleControl(int fd) {
                         if (!firstPid) firstPid = (pid_t)u32Prop(o, kAudioProcessPropertyPID);
                         if (u32Prop(o, kAudioProcessPropertyIsRunningOutput)) playing = YES;
                     }
-                    [rows addObject:[NSString stringWithFormat:@"app\t%d\t%d\t%d\t%@\t%@",
+                    [rows addObject:[NSString stringWithFormat:@"app\t%d\t%d\t%d\t%@\t%@\t%@",
                                      keyIsRealApp(key) ? 1 : 0, playing ? 1 : 0,
-                                     (int)firstPid, displayNameForKey(key), key]];
+                                     (int)firstPid, displayNameForKey(key), key,
+                                     appPathForKey(key) ?: @""]];
                 }
                 [rows sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
                     NSArray *pa = [a componentsSeparatedByString:@"\t"];
