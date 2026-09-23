@@ -7,6 +7,7 @@
 // 用粗笔画保证 16×16 下仍然可辨。
 
 import AppKit
+import ImageIO
 
 let SIZE: CGFloat = 1024
 
@@ -32,7 +33,7 @@ func drawIcon(_ side: CGFloat) -> NSImage {
         NSColor(srgbRed: 0.36, green: 0.51, blue: 0.98, alpha: 1.0),  // #5B82FA
         NSColor(srgbRed: 0.55, green: 0.36, blue: 0.96, alpha: 1.0),  // #8C5CF5
     ])!
-    bg.draw(in: iconRect, angle: -60)
+    bg.draw(in: iconRect, angle: -90)
 
     // 微弱高光，避免平板
     let gloss = NSGradient(colors: [
@@ -91,18 +92,26 @@ let specs: [(String, CGFloat)] = [
     ("icon_512x512",     512),  ("icon_512x512@2x", 1024),
 ]
 
-for (name, px) in specs {
-    let img = drawIcon(px)
-    let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
-    rep.size = NSSize(width: px, height: px)
-    let png = rep.representation(using: .png, properties: [:])!
-    try! png.write(to: URL(fileURLWithPath: "\(outDir)/\(name).png"))
-    print("  \(name).png  \(Int(px))x\(Int(px))")
+/// 用 ImageIO 写 PNG —— NSBitmapImageRep 的 PNG 输出几乎不压缩（1024 能到 3.6MB）
+func writePNG(_ img: NSImage, _ path: String) {
+    var rect = NSRect(origin: .zero, size: img.size)
+    guard let cg = img.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return }
+    let url = URL(fileURLWithPath: path) as CFURL
+    guard let dest = CGImageDestinationCreateWithURL(url, "public.png" as CFString, 1, nil) else { return }
+    CGImageDestinationAddImage(dest, cg, nil)
+    CGImageDestinationFinalize(dest)
 }
 
-// 额外存一张 1024 预览图
-let preview = drawIcon(1024)
-try! NSBitmapImageRep(data: preview.tiffRepresentation!)!
-    .representation(using: .png, properties: [:])!
-    .write(to: URL(fileURLWithPath: "build/AppIcon-preview.png"))
+func fileSize(_ p: String) -> Double {
+    (try? FileManager.default.attributesOfItem(atPath: p)[.size] as? Double) ?? 0
+}
+
+for (name, px) in specs {
+    let path = "\(outDir)/\(name).png"
+    writePNG(drawIcon(px), path)
+    print(String(format: "  %-22s %4dx%-4d %7.0f KB", name, Int(px), Int(px), fileSize(path) / 1024))
+}
+
+// 预览图（不进 bundle）
+writePNG(drawIcon(1024), "build/AppIcon-preview.png")
 print("  AppIcon-preview.png  (1024)")
