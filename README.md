@@ -2,7 +2,7 @@
 
 给 Mac 上的每个 App 单独调音量。用 CoreAudio Process Taps（macOS 14.2+）实现，无需虚拟音频驱动。
 
-> 📖 **产品介绍、安装方式、FAQ** → [`crzliang/mac-sound-control-docs`](https://github.com/crzliang/mac-sound-control-docs)
+> 📖 **产品介绍、安装方式、FAQ** → [`crzliang/mac-sound-control`](https://github.com/crzliang/mac-sound-control)
 > 🔧 **实现原理、实测数据、踩过的 25 个坑** → 该仓库的 `TECHNICAL.md`
 
 ## 构建
