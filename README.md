@@ -1,12 +1,38 @@
-# PerAppVol
+<div align="center">
 
-**给 Mac 上的每个 App 单独调音量。**
+<img src="docs/hero-icon.png" width="112" alt="PerAppVol" />
 
-Windows 有音量合成器，macOS 没有。开视频会议时想把音乐压到 20%、想让消息提示音闭嘴但保留通话音量、想让某个网页的声音别炸 —— 在 macOS 上都做不到。
+<h1>PerAppVol</h1>
 
-PerAppVol 补上这一块：一个菜单栏工具，列出当前所有 App，每个一根滑块。
+<h3>给 Mac 上的每个 App 单独调音量</h3>
 
-```
+<p>Windows 有音量合成器，macOS 没有 —— 补上这一块。</p>
+
+<br />
+
+<img alt="macOS" src="https://img.shields.io/badge/macOS-14.2%2B-0A0A0A?style=for-the-badge&logo=apple&logoColor=white" />
+<img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-arm64-0A0A0A?style=for-the-badge&logo=apple&logoColor=white" />
+<img alt="Swift" src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" />
+<img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-2EA44F?style=for-the-badge" />
+
+<br /><br />
+
+<strong>QQ 30% · 微信 60% · 音乐 100% · 提示音静音 —— 互不影响</strong>
+
+<br /><br />
+
+<pre><code>make install &amp;&amp; make autostart</code></pre>
+
+<sup>或从 <a href="../../releases">Releases</a> 下载 DMG，双击「安装.command」</sup>
+
+</div>
+
+<br />
+
+<p align="center">
+<!-- 换成真实截图：把截图放到 docs/screenshot.png 并把下面的 pre 换成
+     <img src="docs/screenshot.png" alt="界面" width="720" /> -->
+<pre align="center">
 ┌────────────────────────────────────────────┐
 │ App 音量控制      共 17 个 App   ● 引擎运行中 │
 ├────────────────────────────────────────────┤
@@ -25,7 +51,8 @@ PerAppVol 补上这一块：一个菜单栏工具，列出当前所有 App，每
 │                                            │
 │ ☑ 显示系统进程  ☑ 开机自启    全部静音  退出 │
 └────────────────────────────────────────────┘
-```
+</pre>
+</p>
 
 ---
 

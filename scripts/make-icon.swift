@@ -114,4 +114,7 @@ for (name, px) in specs {
 
 // 预览图（不进 bundle）
 writePNG(drawIcon(1024), "build/AppIcon-preview.png")
-print("  AppIcon-preview.png  (1024)")
+
+// README 页头用的小图标（进仓库）
+writePNG(drawIcon(256), "docs/hero-icon.png")
+print("  docs/hero-icon.png  (256)")
