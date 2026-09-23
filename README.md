@@ -325,50 +325,67 @@ enum Typo {
 
 ---
 
-## 七、仓库文件
+## 七、目录结构与构建
 
-| 文件 | 说明 |
-|---|---|
-| `PerAppVolApp.swift` | **菜单栏 UI**（SwiftUI `MenuBarExtra`）—— 只是控制器 |
-| `perappvol.m` | **混音引擎**（ObjC）：tap / 聚合设备 / 渲染 / 限幅 / 设备切换 / 动态增删 / socket |
-| `build-app.sh` | 编译打包成 `build/PerAppVol.app`，自动挑签名身份 |
-| `apptap.m` | 链路 PoC：进程枚举 + 单/多 tap 抓取 + 聚合设备 dump |
-| `volctl.swift` | 系统总音量/静音/切换默认输出设备（零权限） |
+```
+mac-sound-control/
+├── README.md                  本文
+├── Makefile                   统一构建入口
+├── build-app.sh               打包成 build/PerAppVol.app（含签名）
+├── src/
+│   ├── engine/
+│   │   └── perappvol.m        ★ 混音引擎（ObjC/C）
+│   │                          tap / 聚合设备 / 渲染 / 限幅 / 设备热切换 /
+│   │                          动态增删 / Unix socket 控制协议
+│   ├── ui/
+│   │   └── PerAppVolApp.swift ★ 菜单栏 UI（SwiftUI）
+│   │                          只是控制器；AppKit NSSlider、命令合并、设置自愈
+│   └── tools/
+│       ├── apptap.m           链路 PoC / 调试：进程枚举 + tap 抓取 + 聚合设备 dump
+│       └── volctl.swift       系统总音量 / 静音 / 切换默认输出设备（零权限）
+├── docs/                      调研佐证（截图、对照图、日志）
+└── build/                     构建产物（gitignore）
+```
 
-### 构建与运行
+### 构建
+
 ```bash
-./build-app.sh          # 产出 build/PerAppVol.app
+make              # App + 全部工具
+make app          # 只要菜单栏 App  ->  build/PerAppVol.app
+make tools        # 只要命令行工具   ->  build/{perappvol,apptap,volctl}
+make run          # 构建并启动
+make clean
+```
+
+### 运行 App
+
+```bash
 open build/PerAppVol.app
 # 首次运行：系统设置 → 隐私与安全性 → 屏幕与系统音频录制 → 打开 PerAppVol
 ```
 
-### 单独跑引擎（不走 UI）
-```bash
-clang -fobjc-arc -O2 perappvol.m -o perappvol \
-    -framework CoreAudio -framework Foundation -framework CoreGraphics
+### 引擎单独跑（不走 UI）
 
-./perappvol demo com.netease.163music 12        # 目标 App 音量 0→100→0 扫动（听觉验证）
-                                                # PPV_OTHERS=0 可让目标独占输出
-./perappvol run com.netease.163music=0.2 ALL=1.0 10     # 静态增益
-./perappvol serve com.netease.163music=0.2 ALL=1.0 --socket /tmp/ppv.sock
+```bash
+build/perappvol --list                                   # 可识别的 App（helper 已归并）
+build/perappvol demo com.netease.163music 12             # 目标 App 音量 0→100→0 扫动（听觉验证）
+build/perappvol run com.netease.163music=0.2 ALL=1.0 10  # 静态增益
+build/perappvol serve com.netease.163music=0.2 ALL=1.0 --socket /tmp/ppv.sock
 printf "set ALL 0.5\nstat\n" | nc -U /tmp/ppv.sock
 ```
 
-### apptap（链路调试）
-```bash
-./apptap procs                   # 谁在出声（OBJID / PID / OUT / IN / BUNDLE ID）
-./apptap tap ALL 5               # 全局 tap
-APPTAP_MUTE=1  ./apptap tap ...  # 同时把它的声音从硬件劫走
-APPTAP_DUMP=1  ./apptap tap ...  # 打印聚合设备构成
-APPTAP_REQUEST=1 ./apptap tap ...# 先申请 TCC 权限
-```
+### 调试工具
 
-### volctl.swift（系统总音量）
 ```bash
-swift volctl.swift get           # 30%  [muted]
-swift volctl.swift set 50
-swift volctl.swift mute on|off|toggle
-swift volctl.swift devices       # 列出输出设备 + 是否支持硬件音量
-swift volctl.swift setout 142    # 切换默认输出设备
-swift volctl.swift watch         # 实时监听音量变化
+build/apptap procs                   # 谁在出声（OBJID / PID / OUT / IN / BUNDLE ID）
+build/apptap tap ALL 5               # 全局 tap
+APPTAP_MUTE=1  build/apptap tap ...  # 同时把它的声音从硬件劫走
+APPTAP_DUMP=1  build/apptap tap ...  # 打印聚合设备构成
+
+build/volctl get                     # 30%  [muted]
+build/volctl set 50
+build/volctl mute on|off|toggle
+build/volctl devices                 # 列出输出设备 + 是否支持硬件音量
+build/volctl setout 142              # 切换默认输出设备
+build/volctl watch                   # 实时监听音量变化
 ```

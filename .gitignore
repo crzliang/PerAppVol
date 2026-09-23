@@ -1,28 +1,5 @@
-# 构建产物
+# 所有构建产物都在这里（make / build-app.sh 的输出）
 build/
-*.o
-*.dSYM/
-
-# 编译出来的二进制（源码在仓库里）
-/apptap
-/perappvol
-/winlist
-/allw
-/allw2
-/crop
-/crop2
-/crop3
-/fontprobe
-/fontweight
-/cjkprobe
-/cjkweight
-/cascadetest
-/cascade72
-/bigweight
-/perrun
-/retina
-/inkprobe
-/verify
 
 # macOS
 .DS_Store

@@ -14,13 +14,13 @@ APP=build/PerAppVol.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-echo "▸ 编译混音引擎 (perappvol)…"
-clang -fobjc-arc -O2 perappvol.m \
+echo "▸ 编译混音引擎 (src/engine/perappvol.m)…"
+clang -fobjc-arc -O2 src/engine/perappvol.m \
     -o "$APP/Contents/Resources/perappvol" \
     -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
-echo "▸ 编译菜单栏 UI (PerAppVol)…"
-swiftc -O -parse-as-library PerAppVolApp.swift \
+echo "▸ 编译菜单栏 UI (src/ui/PerAppVolApp.swift)…"
+swiftc -O -parse-as-library src/ui/PerAppVolApp.swift \
     -o "$APP/Contents/MacOS/PerAppVol" \
     -framework SwiftUI -framework AppKit -framework CoreAudio
 

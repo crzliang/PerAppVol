@@ -78,8 +78,16 @@ final class CtlClient {
         return kill(pid, 0) == 0
     }
 
+    private let sendLock = NSLock()
+
     /// 发一条命令，读回应答（`get`/`list`/`stat` 以 "END" 结尾，其余一行）
+    /// 必须串行化：电平轮询(10Hz)、命令合并(40Hz)、状态刷新(1Hz) 会并发调用它。
     func send(_ cmd: String) -> String? {
+        sendLock.lock(); defer { sendLock.unlock() }
+        return sendLocked(cmd)
+    }
+
+    private func sendLocked(_ cmd: String) -> String? {
         let fd = connect()
         guard fd >= 0 else { return nil }
         defer { close(fd) }
@@ -243,6 +251,43 @@ enum IconCache {
     }
 }
 
+// MARK: - 电平表数据源
+
+/// 共享电平源：后台 10Hz 轮询引擎 `stat`，各行的 AppKit 视图直接读。
+/// 【不经过 SwiftUI diff】—— 所以拖滑块、看电平互不干扰。
+final class MeterFeed {
+    static let shared = MeterFeed()
+    private var pk: [String: Double] = [:]
+    private let lock = NSLock()
+    private var started = false
+
+    func start() {
+        guard !started else { return }
+        started = true
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            DispatchQueue.global(qos: .userInteractive).async {
+                guard let resp = CtlClient.shared.send("stat") else { return }
+                var next: [String: Double] = [:]
+                for line in resp.split(separator: "\n") {
+                    // 行格式: in <label（可含空格）> rms=... pk=... gain=...
+                    guard line.hasPrefix("in ") else { continue }
+                    let t = line.split(separator: " ").map(String.init)
+                    guard let pkIdx = t.firstIndex(where: { $0.hasPrefix("pk=") }) else { continue }
+                    let label = t[1..<pkIdx].joined(separator: " ")
+                    if let v = Double(t[pkIdx].dropFirst(3)) { next[label] = v }
+                }
+                self?.lock.lock(); self?.pk = next; self?.lock.unlock()
+            }
+        }
+    }
+
+    /// 该路的峰值电平（0...1），带缓降
+    func level(_ label: String) -> Double {
+        lock.lock(); defer { lock.unlock() }
+        return pk[label] ?? 0
+    }
+}
+
 // MARK: - 命令合并发送（latest-wins）★ 跟手感的关键
 
 /// 滑块拖动每秒产生 ~60 个事件。逐个开 socket 发命令必然积压、丢包、乱序 —— 表现为"不跟手"。
@@ -374,6 +419,7 @@ final class AppModel: ObservableObject {
             }
         }
         ensureEngine()
+        MeterFeed.shared.start()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
@@ -518,6 +564,32 @@ final class AppModel: ObservableObject {
     }
 }
 
+// MARK: - 电平条（AppKit 自绘，30Hz 自刷新，不碰 SwiftUI）
+
+final class LevelBarView: NSView {
+    var meterKey: String = ""
+    private var shown = 0.0
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let target = min(max(MeterFeed.shared.level(meterKey), 0), 1)
+        shown += (target - shown) * 0.35                  // 视觉缓动
+        NSColor.quaternaryLabelColor.setFill()
+        bounds.fill()
+        if shown > 0.002 {
+            (shown > 0.85 ? NSColor.systemOrange : NSColor.systemBlue).setFill()
+            NSRect(x: 0, y: 0, width: bounds.width * shown, height: bounds.height).fill()
+        }
+    }
+
+    /// 30Hz 自刷新 —— 完全不触发 SwiftUI 重绘
+    func startTicking() {
+        Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.needsDisplay = true
+        }
+    }
+}
+
 // MARK: - AppKit 原生滑块（跟手感的物理上限）
 
 /// 关键：拖动过程【完全不经过 SwiftUI】。
@@ -527,7 +599,13 @@ final class AppModel: ObservableObject {
 final class SliderRowView: NSView {
     private let slider = NSSlider()
     private let label = NSTextField(labelWithString: "")
+    private let level = LevelBarView()
     var onEdit: ((Double) -> Void)?
+
+    /// 该行对应引擎里的哪一路（用于取电平）
+    var meterKey: String = "" {
+        didSet { level.meterKey = meterKey; level.needsDisplay = true }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -542,18 +620,25 @@ final class SliderRowView: NSView {
         label.alignment = .right
         label.translatesAutoresizingMaskIntoConstraints = false
         slider.translatesAutoresizingMaskIntoConstraints = false
+        level.translatesAutoresizingMaskIntoConstraints = false
         addSubview(slider)
         addSubview(label)
+        addSubview(level)
 
         NSLayoutConstraint.activate([
             slider.leadingAnchor.constraint(equalTo: leadingAnchor),
             slider.trailingAnchor.constraint(equalTo: label.leadingAnchor, constant: -6),
-            slider.centerYAnchor.constraint(equalTo: centerYAnchor),
+            slider.topAnchor.constraint(equalTo: topAnchor),
             label.trailingAnchor.constraint(equalTo: trailingAnchor),
             label.widthAnchor.constraint(equalToConstant: 38),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 20),
+            label.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
+            level.leadingAnchor.constraint(equalTo: leadingAnchor),
+            level.trailingAnchor.constraint(equalTo: slider.trailingAnchor),
+            level.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 3),
+            level.heightAnchor.constraint(equalToConstant: 2),
+            heightAnchor.constraint(equalToConstant: 24),
         ])
+        level.startTicking()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -580,16 +665,19 @@ final class SliderRowView: NSView {
 struct LabeledSlider: NSViewRepresentable {
     let value: Double
     let onEdit: (Double) -> Void
+    var meterKey: String = ""
 
     func makeNSView(context: Context) -> SliderRowView {
         let v = SliderRowView()
         v.onEdit = onEdit
+        v.meterKey = meterKey
         v.apply(value)
         return v
     }
 
     func updateNSView(_ v: SliderRowView, context: Context) {
         v.onEdit = onEdit
+        v.meterKey = meterKey
         v.apply(value)           // 内部有 0.02 死区，拖动时不会被打断
     }
 }
@@ -603,6 +691,7 @@ struct RowView: View {
     let playing: Bool
     let value: Double
     let onEdit: (Double) -> Void
+    var meterKey: String = ""
     var onRelease: (() -> Void)?
 
     var body: some View {
@@ -634,7 +723,7 @@ struct RowView: View {
                     .help("取消单独控制，回到「其他」")
                 }
             }
-            LabeledSlider(value: value, onEdit: onEdit)
+            LabeledSlider(value: value, onEdit: onEdit, meterKey: meterKey)
                 .padding(.leading, 22)   // = 图标16 + 间距6，与 App 名称左边缘对齐
         }
     }
@@ -682,6 +771,7 @@ struct PanelView: View {
                                 playing: a.playing,
                                 value: model.desired[a.key] ?? 1.0,
                                 onEdit: { model.control(a, gain: $0) },
+                                meterKey: a.key,
                                 onRelease: model.desired[a.key] != nil ? { model.release(a) } : nil)
                             .padding(.vertical, 7)     // 行内上下留白
                         Divider()                      // 行间分隔线（与 List 视觉一致）
@@ -697,7 +787,8 @@ struct PanelView: View {
                                 set: { model.showAll = $0 })) {
                 RowView(title: "其他所有 App", subtitle: nil, icon: nil, playing: false,
                         value: model.desired["ALL"] ?? model.allGain,
-                        onEdit: { model.control(label: "ALL", $0) })
+                        onEdit: { model.control(label: "ALL", $0) },
+                        meterKey: "ALL")
             } label: {
                 Typo.ui.text("其他所有 App  \(Int(model.allGain * 100))%")
                     .foregroundStyle(.secondary)
