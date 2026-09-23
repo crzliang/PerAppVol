@@ -46,7 +46,7 @@ macOS **没有**"按 App 调音量"的现成公开 API。
 
 ```
 PerAppVol.app（菜单栏 UI，SwiftUI）          ← 只是控制器，崩了不能断音
-        │  Unix socket  /tmp/mac-sound-control.sock
+        │  Unix socket  /tmp/perappvol.sock
         ▼
 perappvol serve（常驻混音引擎，ObjC）        ← 真正的音频通路
 ```
@@ -180,6 +180,21 @@ in systemsoundserverd pk=0.15338 gain=0.300
 - **Swift：`init()` 里的赋值不触发 `didSet`** —— 数据迁移的结果必须显式写回。
 - **`swiftc` 不认 `-arch`**（那是 clang 的），要用 `-target arm64-apple-macos14.2`。
 - **`swiftc` 单文件默认当脚本编译**，`@main` 会报 "contains top-level code"，需要 `-parse-as-library`。
+- **项目改名（mac-sound-control → PerAppVol）不是改字符串**，系统侧有一整套持久状态跟着 bundle ID / label 走，
+  漏一个就出事。完整清单和迁移脚本见 `scripts/migrate-legacy.sh`：
+  | 改了 | 不加迁移会怎样 |
+  |---|---|
+  | bundle ID | TCC 授权按 bundle ID 记账 → 旧授权不再匹配（旧条目成死记录，用 `tccutil reset` 清）；`UserDefaults` 也按 bundle ID 分域 → 用户的每 App 音量设置丢失（要 `defaults export/import`，不能 `mv` 文件，cfprefsd 有缓存会写回） |
+  | LaunchAgent label | 旧 agent 的 `KeepAlive=true` 会再拉起一个 App：两个菜单栏图标，两个 UI 抢引擎 |
+  | `/tmp/*.sock` | 旧引擎照跑、占着旧 socket，新引擎绑新 socket → 两个引擎同时抓音频，自激反馈 + 双份声音。要按 socket 反查 pid（`lsof -U`）杀，不要无差别 `pkill` |
+  | LaunchServices 注册 | 同一路径同时挂两个 bundle ID，`open` 打开哪个看注册顺序（注销前要确认已安装的 App 确实是旧 ID，否则会把新版一起注销） |
+- **macOS 自带的 bash 是 3.2，`"$var）…"` 会把全角字符的字节吃进变量名**（变量名变成 `var\uff09` 这种）——
+  `set -u` 下直接报 `unbound variable` 把脚本打死（实测迁移脚本就死在这）。
+  **变量紧跟中文时必须写 `${var}`**，一个都不能饶。
+- **`FileHandle(forWritingTo:)` 是 O_WRONLY 且偏移为 0**：用它当子进程的 stderr 时，
+  新进程的输出会从文件**开头覆盖**，上一次“确实起来了”的日志被盖掉 ——
+  现场表现为“引擎日志里没有启动记录，看起来根本没跑过”（实测花了很久才反应过来）。
+  必须先 `seekToEnd()`（或在子进程里用 `fopen(..., "a")`）。
 
 ## 六、中英混排的字体排版
 

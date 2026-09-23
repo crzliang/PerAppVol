@@ -117,7 +117,7 @@ static OSStatus buildAggregate(NSArray<NSNumber *> *tapIDs, AudioObjectID *outAg
     // 关键：private=1（tap 聚合必须私有，不持久化），taps 挂进聚合设备
     NSDictionary *comp = @{
         @"name": @"PerAppMixerTapAggregate",
-        @"uid": [NSString stringWithFormat:@"com.mac-sound-control.agg.%d", getpid()],
+        @"uid": [NSString stringWithFormat:@"com.perappvol.agg.%d", getpid()],
         @"private": @(1),
         @"taps": taps,
     };

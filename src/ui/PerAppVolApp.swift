@@ -21,8 +21,10 @@ import CoreAudio
 import CoreGraphics
 import Darwin
 
-let kSockPath = "/tmp/mac-sound-control.sock"
+let kSockPath = "/tmp/perappvol.sock"
+let kPidPath = "/tmp/perappvol.pid"
 let kLogPath = "/tmp/perappvol-ui.log"
+let kEngineErrPath = "/tmp/perappvol-engine.err"
 
 /// UI 是 GUI 进程，stdout 看不到 —— 写文件才能调试
 func ulog(_ s: String) {
@@ -72,7 +74,7 @@ final class CtlClient {
     /// 引擎进程是否【真的】在跑 —— 看 PID 文件 + kill(pid,0)。
     /// 不能用 socket 探测：引擎重建时会短暂不应答，误判就会重复拉起一个新引擎。
     static func engineProcessAlive() -> Bool {
-        guard let txt = try? String(contentsOfFile: "/tmp/mac-sound-control.pid", encoding: .utf8),
+        guard let txt = try? String(contentsOfFile: kPidPath, encoding: .utf8),
               let pid = Int32(txt.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1
         else { return false }
         return kill(pid, 0) == 0
@@ -450,6 +452,23 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 引擎 stderr 落盘用。
+    /// 坑：`FileHandle(forWritingTo:)` 是 O_WRONLY，**偏移是 0** —— 不 seek 到末尾的话，
+    /// 新引擎的输出会从文件开头覆盖，把上一次“确实起来了”的日志盖掉，
+    /// 看起来就像引擎从未启动（实测花了很久才反应过来）。
+    private func openEngineLog() -> FileHandle {
+        if !FileManager.default.fileExists(atPath: kEngineErrPath) {
+            FileManager.default.createFile(atPath: kEngineErrPath, contents: nil)
+        }
+        guard let fh = try? FileHandle(forWritingTo: URL(fileURLWithPath: kEngineErrPath)) else {
+            return FileHandle.nullDevice
+        }
+        _ = try? fh.seekToEnd()
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        _ = try? fh.write(contentsOf: Data("\n===== 引擎启动 \(stamp) =====\n".utf8))
+        return fh
+    }
+
     /// 引擎没起就拉起它（引擎二进制塞在 app bundle 的 Resources 里）
     private func ensureEngine() {
         // 关键：判"要不要拉起"必须看进程，不能看 socket 应答。
@@ -473,11 +492,7 @@ final class AppModel: ObservableObject {
         p.arguments = ["serve", "ALL=1.0", "--socket", kSockPath]
         p.standardOutput = FileHandle.nullDevice
         // 引擎的诊断信息必须留下来 —— 之前丢给 /dev/null，它为什么挂掉根本查不到。
-        if !FileManager.default.fileExists(atPath: "/tmp/perappvol-engine.err") {
-            FileManager.default.createFile(atPath: "/tmp/perappvol-engine.err", contents: nil)
-        }
-        p.standardError = (try? FileHandle(forWritingTo: URL(fileURLWithPath: "/tmp/perappvol-engine.err")))
-                        ?? FileHandle.nullDevice
+        p.standardError = openEngineLog()
         try? p.run()
         for _ in 0..<30 {
             usleep(100_000)
@@ -862,6 +877,7 @@ struct PerAppVolApp: App {
     init() {
         // 注意：不能依赖 PanelView.onAppear —— MenuBarExtra(.window) 的内容
         // 只有用户点开菜单时才创建，那时才启动引擎就太晚了。
+        Autostart.migrateLegacy()   // 旧 label 的 LaunchAgent 会拉起第二个 App，必须先清
         DispatchQueue.main.async { AppModel.shared.start() }
     }
 

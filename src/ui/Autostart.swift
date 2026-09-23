@@ -9,11 +9,30 @@
 import Foundation
 
 enum Autostart {
-    static let label = "com.mac-sound-control.perappvol"
+    static let label = "com.perappvol.autostart"
 
-    private static var plistURL: URL {
+    /// 旧版（项目原名 mac-sound-control）的 label —— 升级时必须清理，
+    /// 否则旧 agent 的 KeepAlive 会再拉起一个 App（两个菜单栏图标 + 抢引擎）。
+    private static let legacyLabel = "com.mac-sound-control.perappvol"
+
+    private static var plistURL: URL { plistURL(label) }
+
+    private static func plistURL(_ label: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(label).plist")
+    }
+
+    /// 把旧 label 的 LaunchAgent 迁到新 label（保留"原本是开着的"这个意图）。
+    /// 幂等：没有旧 plist 时什么都不做。App 启动时调一次。
+    static func migrateLegacy() {
+        let old = plistURL(legacyLabel)
+        let wasEnabled = FileManager.default.fileExists(atPath: old.path)
+        guard wasEnabled else { return }
+        _ = run("launchctl", ["bootout", "gui/\(getuid())/\(legacyLabel)"])
+        _ = run("launchctl", ["unload", old.path])
+        try? FileManager.default.removeItem(at: old)
+        ulog("Autostart: 已清理旧 LaunchAgent \(legacyLabel)")
+        if !isEnabled { install() }   // 原来开着 → 用新 label 重新装上
     }
 
     /// 是否已启用（看 plist 在不在即可 —— launchctl 状态查询在新版 macOS 上不稳定）

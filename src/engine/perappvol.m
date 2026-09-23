@@ -31,6 +31,16 @@
 #import <fcntl.h>
 #import <unistd.h>
 
+#pragma mark - 统一标识（改这里要同步：build-app.sh 的 CFBundleIdentifier、
+#pragma mark             src/ui/Autostart.swift 的 label、scripts/migrate-legacy.sh）
+
+/// 控制套接字（UI / 脚本都用这个路径）
+static NSString *const kSockDefault = @"/tmp/perappvol.sock";
+/// 单实例锁文件
+static NSString *const kPidPath = @"/tmp/perappvol.pid";
+/// 私有聚合设备的 UID 前缀（对外不可见，只用于避免撞名）
+static NSString *const kAggUIDFormat = @"com.perappvol.mixer.%d";
+
 #pragma mark - 通用工具
 
 static AudioObjectPropertyAddress A_(AudioObjectPropertySelector s,
@@ -551,7 +561,7 @@ static OSStatus buildAggregate(AudioObjectID *outAgg, AudioObjectID outDevice) {
     // 真实输出设备做 sub-device，并作为时钟主设备（同一时钟 → 无漂移、低延迟）
     NSDictionary *comp = @{
         @"name": @"PerAppVolumeMixer",
-        @"uid": [NSString stringWithFormat:@"com.mac-sound-control.mixer.%d", getpid()],
+        @"uid": [NSString stringWithFormat:kAggUIDFormat, getpid()],
         @"private": @(1),
         @"master": devUID,
         @"subdevices": @[ @{ @"uid": devUID } ],
@@ -740,10 +750,11 @@ static int handleControl(int fd) {
 /// 之前没有这层保护：UI 探测超时就再拉一个引擎 → 两个引擎抢同一个 socket，
 /// 还会互相把对方的输出抓回来（自激反馈 + 双份声音）。
 static int acquireSingleInstanceLock(void) {
-    int fd = open("/tmp/mac-sound-control.pid", O_RDWR | O_CREAT, 0644);
+    int fd = open(kPidPath.fileSystemRepresentation, O_RDWR | O_CREAT, 0644);
     if (fd < 0) { perror("open pidfile"); return -1; }
     if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
-        fprintf(stderr, "已有另一个引擎实例在运行（/tmp/mac-sound-control.pid 被锁），本实例退出。\n");
+        fprintf(stderr, "已有另一个引擎实例在运行（%s 被锁），本实例退出。\n",
+                kPidPath.fileSystemRepresentation);
         close(fd);
         return -1;
     }
@@ -1071,7 +1082,7 @@ int main(int argc, const char *argv[]) {
         if ([cmd isEqualToString:@"serve"]) {
             NSMutableArray<NSString *> *specs = [NSMutableArray array];
             NSTimeInterval secs = 3600 * 8;
-            NSString *sock = @"/tmp/mac-sound-control.sock";
+            NSString *sock = kSockDefault;
             for (int i = 2; i < argc; i++) {
                 NSString *a = @(argv[i]);
                 if ([a isEqualToString:@"--socket"] && i + 1 < argc) sock = @(argv[++i]);

@@ -115,6 +115,15 @@ xattr -cr /Applications/PerAppVol.app
 **Q：调 QQ / 微信 / 飞书 的音量，为什么管不到消息提示音？**
 因为消息提示音**不是 App 播放的** —— 系统通知的提示音由 `systemsoundserverd` 统一播放。PerAppVol 把它做成独立的「系统提示音」一路，单独调它就行。App 自己的音频（语音消息、视频通话、App 内音效）才归该 App 那一根滑块管。
 
+**Q：从旧版本（项目原名 mac-sound-control）升级，需要做什么？**
+**跑一次 `make install` 就行**（DMG 版双击「安装.command」）。迁移脚本会自动清掉旧版的足迹：
+旧 bundle ID 的 App/TCC 记录、旧 LaunchAgent（它的 `KeepAlive` 会拉起第二个 App）、
+旧 `/tmp` socket 与 PID（旧引擎不杀会和新引擎抢音频）、旧默认输出注册；
+**你的每 App 音量设置会一并迁移过来**。
+
+> 唯一要手动的一步：bundle ID 变了 = **新的隐私身份**，
+> 需要去 **系统设置 → 隐私与安全性 → 屏幕与系统音频录制** 把 PerAppVol 重新打开（旧的条目已经失效）。
+
 **Q：会不会有延迟？**
 端到端理论预算 ≤ 40ms（滑块命令合并 25ms + 音频回调 10ms + 少量调度）。日常听感无感。
 
@@ -139,7 +148,7 @@ make app          # 只要 App       → build/PerAppVol.app
 make tools        # 只要命令行工具  → build/{perappvol,apptap,volctl}
 make icon         # 重新生成图标
 make dmg          # 打包 DMG
-make install      # 装到 /Applications
+make install      # 装到 /Applications（自动迁移旧版 mac-sound-control 的残留）
 make autostart    # 开机自启
 make clean
 ```
@@ -150,11 +159,11 @@ src/ui/PerAppVolApp.swift     菜单栏 UI（SwiftUI）
 src/ui/Autostart.swift        开机自启（LaunchAgent）
 src/tools/apptap.m            链路调试工具
 src/tools/volctl.swift        系统总音量 / 设备切换
-scripts/                      图标生成、开机自启
+scripts/                      图标生成、开机自启、旧版命名迁移
 .github/workflows/            CI + 自动发版
 docs/                         技术笔记
 ```
 
 **发版**：推 `v*` 标签即自动构建 + 发布到 GitHub Releases（`.github/workflows/release.yml`）。
 
-**技术实现、踩过的坑（25 条）、API 用法** → 见 [`docs/TECHNICAL.md`](docs/TECHNICAL.md)。
+**技术实现、踩过的坑（28 条）、API 用法** → 见 [`docs/TECHNICAL.md`](docs/TECHNICAL.md)。

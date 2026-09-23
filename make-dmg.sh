@@ -50,8 +50,9 @@ find_dev_id() {
         | sed -E 's/.*"(.*)".*/\1/'; } || true
 }
 find_local_id() {
+    # 新证书名优先，旧项目名时期的证书作兼容回退
     { security find-identity -v -p codesigning 2>/dev/null \
-        | grep "SoundControl Local Signing" | head -1 \
+        | grep -E "PerAppVol Local Signing|SoundControl Local Signing" | head -1 \
         | sed -E 's/.*"(.*)".*/\1/'; } || true
 }
 
@@ -148,6 +149,11 @@ ln -sf /Applications "$STAGE/Applications"
 # （自签名证书 + 重签 + 移除 quarantine），双击即可完成安装
 cp install.command "$STAGE/安装.command"
 chmod +x "$STAGE/安装.command"
+# 旧版迁移脚本：安装器会调它清掉 mac-sound-control 时期的残留
+# （bundle ID / LaunchAgent / socket / 用户设置 / TCC），DMG 里没有 repo 就得一起带上
+mkdir -p "$STAGE/scripts"
+cp scripts/migrate-legacy.sh "$STAGE/scripts/migrate-legacy.sh"
+chmod +x "$STAGE/scripts/migrate-legacy.sh"
 
 echo "▸ 生成压缩 DMG…"
 rm -f "$DMG"

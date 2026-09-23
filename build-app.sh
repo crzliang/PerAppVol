@@ -51,7 +51,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key>      <string>com.mac-sound-control.perappvol</string>
+  <key>CFBundleIdentifier</key>      <string>com.perappvol.PerAppVol</string>
   <key>CFBundleName</key>            <string>PerAppVol</string>
   <key>CFBundleDisplayName</key>     <string>PerAppVol</string>
   <key>CFBundleExecutable</key>      <string>PerAppVol</string>
@@ -77,9 +77,15 @@ echo "▸ 签名…"
 # 可用 identity：security find-identity -v -p codesigning
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 if [ -z "$SIGN_IDENTITY" ]; then
-    if security find-identity -v -p codesigning 2>/dev/null | grep -q "SoundControl Local Signing"; then
-        SIGN_IDENTITY="SoundControl Local Signing"
-    fi
+    for name in "PerAppVol Local Signing" "SoundControl Local Signing"; do
+        if security find-identity -v -p codesigning 2>/dev/null | grep -q "$name"; then
+            SIGN_IDENTITY="$name"
+            # 项目原名时期的证书：能用但不建议继续用（名字和产品对不上）
+            [ "$name" = "SoundControl Local Signing" ] \
+                && echo "  ⚠ 用的是旧证书名「$name」—— 建议改名为「PerAppVol Local Signing」（见 install.command）"
+            break
+        fi
+    done
 fi
 if [ -n "$SIGN_IDENTITY" ]; then
     codesign --force --deep --sign "$SIGN_IDENTITY" "$APP"

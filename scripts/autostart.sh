@@ -10,7 +10,8 @@
 
 set -uo pipefail
 
-LABEL="com.mac-sound-control.perappvol"
+LABEL="com.perappvol.autostart"
+LEGACY_LABEL="com.mac-sound-control.perappvol"   # 项目原名，升级时清掉
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 UID_NUM=$(id -u)
 
@@ -21,6 +22,12 @@ APP="/Applications/PerAppVol.app/Contents/MacOS/PerAppVol"
 case "${1:-status}" in
 on)
     [ -x "$APP" ] || { echo "❌ 找不到 PerAppVol，先跑 make install"; exit 1; }
+    # 先清掉项目原名时期的 agent：它的 KeepAlive 会再拉起一个 App
+    if [ -f "$HOME/Library/LaunchAgents/$LEGACY_LABEL.plist" ]; then
+        launchctl bootout "gui/$UID_NUM/$LEGACY_LABEL" 2>/dev/null || true
+        rm -f "$HOME/Library/LaunchAgents/$LEGACY_LABEL.plist"
+        echo "▸ 已清理旧 label: $LEGACY_LABEL"
+    fi
     mkdir -p "$(dirname "$PLIST")"
     cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

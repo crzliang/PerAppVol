@@ -17,6 +17,7 @@ set -uo pipefail
 
 APP_NAME="PerAppVol"
 CERT_NAME="PerAppVol Local Signing"
+LEGACY_CERT_NAME="SoundControl Local Signing"   # 项目原名时期的证书（可复用，避免再弹一次钥匙串）
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/$APP_NAME.app"
 DEST="/Applications/$APP_NAME.app"
@@ -40,6 +41,9 @@ SRC="$WORK/$APP_NAME.app"
 echo "▸ 检查签名证书…"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$CERT_NAME\""; then
     echo "  ✅ 已有可用证书: ${CERT_NAME}（复用）"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$LEGACY_CERT_NAME\""; then
+    CERT_NAME="$LEGACY_CERT_NAME"
+    echo "  ✅ 复用旧证书: ${CERT_NAME}（项目改名前的，仍然有效）"
 else
     echo "  生成自签名代码签名证书（仅此一次）…"
     TMP=$(mktemp -d)
@@ -92,6 +96,16 @@ else
     else
         echo "  ❌ 重签失败"; exit 1
     fi
+fi
+
+# ────────────────────── 旧版迁移（项目原名 mac-sound-control → PerAppVol）
+# bundle ID 变了：TCC / LaunchAgent / socket / 用户设置全都得迁，否则旧 agent 会拉起第二个 App、
+# 旧引擎会占着旧 socket 继续抓音频。脚本幂等，没有旧版残留时什么都不做。
+MIGRATE="$HERE/scripts/migrate-legacy.sh"
+if [ -x "$MIGRATE" ]; then
+    echo
+    "$MIGRATE" || true
+    echo
 fi
 
 # ───────────────────────── 4) 安装
