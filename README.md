@@ -157,4 +157,4 @@ docs/                         技术笔记
 
 **发版**：推 `v*` 标签即自动构建 + 发布到 GitHub Releases（`.github/workflows/release.yml`）。
 
-**技术实现、踩过的坑（18 条）、API 用法** → 见源码仓库的 [`docs/TECHNICAL.md`](https://github.com/crzliang/mac-sound-control-sourcecode/blob/main/docs/TECHNICAL.md)。
+**技术实现、踩过的坑（18 条）、API 用法** → 见 [`docs/TECHNICAL.md`](docs/TECHNICAL.md)。
