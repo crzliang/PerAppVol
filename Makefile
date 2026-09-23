@@ -21,7 +21,7 @@ SWIFT_FLAGS := -target $(ARCH)-apple-macos$(MACOSX_DEPLOYMENT_TARGET)
 OBJC_FLAGS  := -fobjc-arc -O2 -Wall $(CLANG_FLAGS)
 FRAMEWORKS  := -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
-.PHONY: all app tools dmg install run clean
+.PHONY: all app tools icon dmg install run clean
 
 all: app tools
 
@@ -29,6 +29,13 @@ app:
 	./build-app.sh
 
 tools: $(BUILD)/perappvol $(BUILD)/apptap $(BUILD)/volctl
+
+# 只生成图标（预览图在 build/AppIcon-preview.png）
+icon: | $(BUILD)
+	swiftc -O scripts/make-icon.swift -o $(BUILD)/make-icon -framework AppKit
+	$(BUILD)/make-icon
+	iconutil -c icns $(BUILD)/AppIcon.iconset -o $(BUILD)/AppIcon.icns
+	@echo "✅ $(BUILD)/AppIcon.icns"
 
 $(BUILD):
 	mkdir -p $(BUILD)

@@ -124,6 +124,18 @@ jobs:
             ```
             shasum -a 256 -c PerAppVol-*-$ARCH.dmg.sha256
             ```
+
+            > **⚠ macOS 提示「已损坏，无法打开」或「无法验证开发者」？**
+            >
+            > 这是 Gatekeeper 对**未公证**应用的正常拦截。在终端里执行一条命令即可解除：
+            >
+            > ```bash
+            > xattr -cr /Applications/PerAppVol.app
+            > ```
+            >
+            > 然后重新打开。（也可以右键 → 打开 → 再点「打开」。）
+            > `xattr -cr` 清掉隔离属性 `com.apple.quarantine` —— 这只是解除下载隔离，不影响签名。
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

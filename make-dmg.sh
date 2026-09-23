@@ -141,6 +141,10 @@ echo "▸ 组装 DMG（App + Applications 快捷方式）…"
 rm -rf "$STAGE"; mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -sf /Applications "$STAGE/Applications"
+# 安装脚本：解决「没有 Apple 开发者账号」时的 TCC 授权问题
+# （自签名证书 + 重签 + 移除 quarantine），双击即可完成安装
+cp install.command "$STAGE/安装.command"
+chmod +x "$STAGE/安装.command"
 
 echo "▸ 生成压缩 DMG…"
 rm -f "$DMG"

@@ -15,6 +15,13 @@ ARCH="${ARCH:-arm64}"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
+echo "▸ 生成 App 图标 (scripts/make-icon.swift)…"
+swiftc -O scripts/make-icon.swift -o build/make-icon -framework AppKit
+build/make-icon >/dev/null
+iconutil -c icns build/AppIcon.iconset -o build/AppIcon.icns
+cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+echo "  ✅ AppIcon.icns"
+
 echo "▸ 编译混音引擎 (src/engine/perappvol.m)…"
 # 架构显式钉死：目前只出 arm64（Apple Silicon）。
 # 要出通用二进制改成 -arch arm64 -arch x86_64，但 x86 需要真机/CI 验证。
@@ -43,6 +50,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key>     <string>PerAppVol</string>
   <key>CFBundleExecutable</key>      <string>PerAppVol</string>
   <key>CFBundlePackageType</key>     <string>APPL</string>
+  <key>CFBundleIconFile</key>        <string>AppIcon</string>
+  <key>CFBundleIconName</key>        <string>AppIcon</string>
   <key>CFBundleShortVersionString</key> <string>0.1.0</string>
   <key>CFBundleVersion</key>         <string>1</string>
   <key>LSMinimumSystemVersion</key>  <string>14.2</string>

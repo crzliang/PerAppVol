@@ -421,6 +421,24 @@ Actions 页面也可手动触发（`workflow_dispatch`），那时不发 Release
 **有 Developer ID 证书**：需要 Apple Developer Program 会员（99 USD/年），
 Xcode → Settings → Accounts → Manage Certificates → **Developer ID Application**。
 
+### ⚠ 收件人遇到「已损坏 / 无法验证开发者」怎么办
+
+未公证的应用一定会被 Gatekeeper 拦。**一条命令解除**：
+
+```bash
+xattr -cr /Applications/PerAppVol.app
+```
+
+然后重新打开。也可以：**右键 → 打开 → 再点「打开」**。
+
+| 命令 | 作用 |
+|---|---|
+| `xattr -cr <路径>` | 清掉隔离属性 `com.apple.quarantine`（推荐，兼容新旧系统） |
+| `xattr -d com.apple.quarantine <路径>` | 只删这一个属性（精确，但新系统还可能有 `com.apple.provenance`） |
+| `xattr -l <路径>` | 查看当前有哪些属性，排查用 |
+
+这只是解除**下载隔离**，不改动签名，也不降低安全性判断 —— 只是告诉系统"这个文件不是从网上新下载的"。
+
 ### 本地发版（不走 CI）
 
 ```bash
