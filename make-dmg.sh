@@ -41,15 +41,18 @@ done
 
 # ─────────────────────────────────────────────────────────── 前置检查
 
+# 注意：这两个函数【必须】总是返回 0。
+# set -e + pipefail 下，grep 找不到身份会返回 1，
+# 调用处 $(find_local_id) 就会把整个脚本打死 —— CI 上就是这么挂的。
 find_dev_id() {
-    security find-identity -v -p codesigning 2>/dev/null \
+    { security find-identity -v -p codesigning 2>/dev/null \
         | grep "Developer ID Application" | head -1 \
-        | sed -E 's/.*"(.*)".*/\1/'
+        | sed -E 's/.*"(.*)".*/\1/'; } || true
 }
 find_local_id() {
-    security find-identity -v -p codesigning 2>/dev/null \
+    { security find-identity -v -p codesigning 2>/dev/null \
         | grep "SoundControl Local Signing" | head -1 \
-        | sed -E 's/.*"(.*)".*/\1/'
+        | sed -E 's/.*"(.*)".*/\1/'; } || true
 }
 
 check_dist() {

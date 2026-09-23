@@ -27,7 +27,7 @@ echo " PerAppVol 安装"
 echo "──────────────────────────────────────────────"
 echo
 
-[ -d "$SRC" ] || { echo "❌ 没找到 $SRC（请从 DMG 里运行本脚本）"; exit 1; }
+[ -d "$SRC" ] || { echo "❌ 没找到 ${SRC}（请从 DMG 里运行本脚本）"; exit 1; }
 
 # DMG 是【只读】挂载，必须先拷到可写位置才能重签名
 WORK="$(mktemp -d)"
@@ -39,7 +39,7 @@ SRC="$WORK/$APP_NAME.app"
 # ───────────────────────── 1) 确保有可用的本地签名证书
 echo "▸ 检查签名证书…"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$CERT_NAME\""; then
-    echo "  ✅ 已有可用证书: $CERT_NAME（复用）"
+    echo "  ✅ 已有可用证书: ${CERT_NAME}（复用）"
 else
     echo "  生成自签名代码签名证书（仅此一次）…"
     TMP=$(mktemp -d)
