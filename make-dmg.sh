@@ -180,7 +180,8 @@ fi
 echo
 echo "✅ 完成: $DMG  (arch=$ARCH)"
 ls -lh "$DMG" | awk '{print "   大小:", $5}'
-codesign -dv "$DMG" 2>&1 | grep -E "Identifier|Authority|TeamIdentifier" | sed 's/^/   /'
+# 本机模式不签 DMG，codesign 必然失败 —— 不能让它把 set -e 打死
+codesign -dv "$DMG" 2>&1 | grep -E "Identifier|Authority|TeamIdentifier" | sed 's/^/   /' || true
 echo
 if [ "$MODE" = "release" ]; then
     echo "🎉 这个 DMG 可以直接发给别人安装（已公证 + 已装订，Gatekeeper 放行）。"
