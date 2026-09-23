@@ -110,32 +110,40 @@ jobs:
             build/*.sha256
           generate_release_notes: true
           body: |
-            ## ${{ env.APP_NAME }} ${{ env.VERSION }}
+            ## PerAppVol ${{ env.VERSION }}
 
-            **架构：Apple Silicon (arm64)** —— Intel Mac 无法运行（暂无 x86 测试环境，未产出通用二进制）。
-            最低系统：**macOS 14.2**（Process Tap API 的门槛）。
+            **架构：Apple Silicon (arm64)** · 最低系统 **macOS 14.2**
+            （Intel Mac 无法运行 —— 暂无 x86 测试环境，未产出通用二进制）
 
-            安装：双击 DMG → 把 **PerAppVol** 拖到 **Applications**。
+            ### 安装
 
-            首次运行需授权：**系统设置 → 隐私与安全性 → 屏幕与系统音频录制 → PerAppVol**
-            （不授权的话 App 抓不到各 App 的音频。）
+            1. 下载下面的 `PerAppVol-${{ env.VERSION }}-${{ env.ARCH }}.dmg`
+            2. 双击打开 → **双击「安装.command」**
+            3. 首次运行授权：**系统设置 → 隐私与安全性 → 屏幕与系统音频录制 → PerAppVol**
 
-            ### 校验
-            ```
-            shasum -a 256 -c PerAppVol-*-$ARCH.dmg.sha256
-            ```
+            > **为什么要用「安装.command」，不能直接拖？**
+            > 这个 DMG **未公证**（未使用 Apple 开发者账号）。直接拖进 Applications 的 App
+            > 处于未签名状态 —— macOS 不会把它列入隐私授权列表，**永远拿不到授权，也就没有音量控制**。
+            > 「安装.command」会在你机器上生成一张本地签名证书并重签，这一步不能省。
+            > 全程无需 Apple 开发者账号、无需管理员密码。
 
-            > **⚠ macOS 提示「已损坏，无法打开」或「无法验证开发者」？**
-            >
-            > 这是 Gatekeeper 对**未公证**应用的正常拦截。在终端里执行一条命令即可解除：
-            >
+            > **提示「已损坏，无法打开」/「无法验证开发者」？**
+            > 这是 Gatekeeper 对未公证应用的正常拦截，终端执行一条命令即可解除：
             > ```bash
             > xattr -cr /Applications/PerAppVol.app
             > ```
-            >
-            > 然后重新打开。（也可以右键 → 打开 → 再点「打开」。）
-            > `xattr -cr` 清掉隔离属性 `com.apple.quarantine` —— 这只是解除下载隔离，不影响签名。
+            > 然后重新打开。（也可以右键 → 打开 → 再点「打开」）
+            > `xattr -cr` 只是清除下载隔离标记，不影响签名。
 
+            ### 校验
+
+            ```bash
+            shasum -a 256 -c PerAppVol-${{ env.VERSION }}-${{ env.ARCH }}.dmg.sha256
+            ```
+
+            ---
+            产品说明见 [mac-sound-control](https://github.com/crzliang/mac-sound-control) ·
+            技术笔记见 [docs/TECHNICAL.md](https://github.com/crzliang/mac-sound-control-sourcecode/blob/main/docs/TECHNICAL.md)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
