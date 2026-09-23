@@ -3,7 +3,9 @@
 #   make            构建 App + 全部工具
 #   make app        只构建菜单栏 App（build/PerAppVol.app）
 #   make tools      只构建命令行工具（build/{perappvol,apptap,volctl}）
-#   make run        构建并启动
+#   make dmg        打包成 build/PerAppVol.dmg（可分发）
+#   make install    安装到 /Applications 并启动
+#   make run        构建并启动（不安装）
 #   make clean      清理产物
 
 BUILD  := build
@@ -13,7 +15,7 @@ SWIFTC := swiftc
 OBJC_FLAGS  := -fobjc-arc -O2 -Wall
 FRAMEWORKS  := -framework CoreAudio -framework Foundation -framework CoreGraphics -framework AppKit
 
-.PHONY: all app tools run clean
+.PHONY: all app tools dmg install run clean
 
 all: app tools
 
@@ -36,6 +38,20 @@ $(BUILD)/apptap: src/tools/apptap.m | $(BUILD)
 # 系统总音量 / 静音 / 切换默认输出设备（零权限）
 $(BUILD)/volctl: src/tools/volctl.swift | $(BUILD)
 	$(SWIFTC) -O $< -o $@
+
+# 打包 DMG（App + Applications 快捷方式，可分发）
+dmg:
+	./make-dmg.sh
+
+# 安装到 /Applications 并启动
+install: app
+	pkill -f "PerAppVol.app/Contents/MacOS/PerAppVol" 2>/dev/null || true
+	pkill -f "PerAppVol.app/Contents/Resources/perappvol" 2>/dev/null || true
+	rm -rf "/Applications/PerAppVol.app"
+	cp -R "$(BUILD)/PerAppVol.app" /Applications/
+	@echo "✅ 已安装到 /Applications/PerAppVol.app"
+	@echo "   首次运行需在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 里打开 PerAppVol"
+	open "/Applications/PerAppVol.app"
 
 run: app
 	open $(BUILD)/PerAppVol.app
