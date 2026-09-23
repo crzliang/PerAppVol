@@ -71,8 +71,8 @@
 **方式二：从源码构建**
 
 ```bash
-git clone <repo>
-cd mac-sound-control
+git clone git@github.com:crzliang/PerAppVol.git
+cd PerAppVol
 make install          # 构建 + 装到 /Applications + 启动
 make autostart        # 开机自启
 ```
